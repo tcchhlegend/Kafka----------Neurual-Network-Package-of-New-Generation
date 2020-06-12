@@ -2,18 +2,7 @@ import numpy as np
 from functools import partial
 from dag import DAGNode
 import uuid
-
-
-def create_none_dict(li: list):
-    vals = [None] * len(li)
-    return dict(zip(li, vals))
-
-
-def to_tuple(shape):
-    if hasattr(shape, '__iter__'):
-        return tuple(shape)
-    else:
-        return shape,
+from utils import create_none_dict, to_tuple
 
 
 class Neuron(DAGNode):
@@ -72,14 +61,13 @@ class Neuron(DAGNode):
         self.name = name
         print('naming neuron to %s' % self.name)
 
-
     def show_inputs(self):
         input_summary = []
         for i, (name, shape) in enumerate(self._inp_shape.items()):
             connect = None
             if self.children[name]:
                 connect = self.children[name].name
-            line = '%d. name: %s    shape: %s    connect to: %s' % (i+1, name, str(shape), connect)
+            line = '%d. name: %s    shape: %s    connect to: %s' % (i + 1, name, str(shape), connect)
             input_summary.append(line)
         print('------input summary------')
         print('\n'.join(input_summary))
@@ -93,20 +81,20 @@ class Neuron(DAGNode):
                 return name
         return None
 
-    def F(self, *args, **kwargs):
+    def F(self):
         raise NotImplementedError
 
-    def local_grad(self, *args, **kwargs):
+    def local_grad(self):
         raise NotImplementedError
 
-    def create_variable(self, var_name, *, shape):
+    def create_variable(self, var_name, shape):
         self.variable_names.append(var_name)
         self._interface[var_name] = None
         self._local_grad[var_name] = None
         self._grad[var_name] = None
         self._inp_shape[var_name] = tuple(shape)
 
-    def create_parameter(self, par_name, *, shape):
+    def create_parameter(self, par_name, shape):
         self.param_names.append(par_name)
         self._parameters[par_name] = None
         self._local_grad_params[par_name] = None
@@ -117,14 +105,16 @@ class Neuron(DAGNode):
 
     def __call__(self, *args, **kwargs):
         mode = None
-        output = []
+        connect_output = []
         interface_full = self.check_interface()
+
+        # ------------------Handle args---------------------
         for i, arg in enumerate(args):
             if i == 0:
                 if isinstance(arg, Neuron):
-                    mode = 'connect'                # 如果输入是 Neuron, 启动连接模式
+                    mode = 'connect'  # 如果输入是 Neuron, 启动连接模式
                 elif isinstance(arg, np.ndarray):
-                    mode = 'forward'                # 如果输入时 array, 启动前馈模式
+                    mode = 'forward'  # 如果输入时 array, 启动前馈模式
 
                 else:
                     raise ValueError('discover unknown input type: %s' % type(arg))
@@ -134,8 +124,8 @@ class Neuron(DAGNode):
                 self.children[neuron.name] = neuron
                 neuron.parents[self.name] = self
                 self.create_variable(neuron.name, shape=neuron.output_shape)
-                output.append(neuron)
-            elif mode == 'forward':                           # 否则默认输入是数组，调用forward方法
+                connect_output.append(neuron)
+            elif mode == 'forward':  # 否则默认输入是数组，调用forward方法
                 if interface_full:
                     return ValueError('Interface is full.')
                 x = arg
@@ -145,14 +135,49 @@ class Neuron(DAGNode):
                     raise ValueError('The input shape of left function does not match output shape of right function.')
                 interface_full = self.check_interface()
 
+        # -------------------------------Handle kwargs------------------------------
+        for i, (key, val) in enumerate(kwargs.items()):
+            if i == 0:
+                if isinstance(val, Neuron):
+                    mode = 'connect'  # 如果输入是 Neuron, 启动连接模式
+                elif isinstance(val, np.ndarray):
+                    mode = 'forward'  # 如果输入时 array, 启动前馈模式
+
+                else:
+                    raise ValueError('discover unknown input type: %s' % type(arg))
+
+            if mode == 'connect':
+                neuron = val
+                self.children[neuron.name] = neuron
+                neuron.parents[self.name] = self
+                self.create_variable(neuron.name, shape=neuron.output_shape)
+                connect_output.append(neuron)
+            elif mode == 'forward':  # 否则默认输入是数组，调用forward方法
+                if interface_full:
+                    return ValueError('Interface is full.')
+                x = val
+                name = key
+                if name not in self._interface.keys():
+                    raise ValueError('The input shape of left function does not match output shape of right function.')
+                self._interface[name] = x
+
+                interface_full = self.check_interface()
+
+        # forward 输出
+        if mode == 'forward':
+            forward_output = self.F()
+        if mode == 'forward' and self.parents == {}:
+            self.output = forward_output
         if mode == 'forward' and interface_full:
-            return self.F(**self._interface)
-        if len(output) == 1:
-            output = output[0]
-        return output
+            return forward_output
+
+        # connect 输出
+        if mode == 'connect':
+            return connect_output
 
     def __repr__(self):
         return self.name
+
 
 if __name__ == '__main__':
     n1 = Neuron(output_shape=10)

@@ -1,11 +1,13 @@
 from neuron import Neuron
+from castles import Linear
 from nn import NN
+import numpy as np
 
-# n1 = Neuron(output_shape=1)
-# n2 = Neuron(output_shape=2)
-# n3 = Neuron(output_shape=1)
-# n2(n1)
-# n2(n3)
+n1 = Linear(output_shape=1)
+n2 = Linear(output_shape=2)
+n3 = Linear(output_shape=1)
+n2(n1)
+n2(n3)
 
 def feed_forward_network(num_features, num_layers):
     layers = []
@@ -23,9 +25,27 @@ def feed_forward_network(num_features, num_layers):
                 parent(child)
     return NN(layers[0], layers[-1], create_connection=False)
 
-ff = feed_forward_network(5, 3)
-ff.show()
+# ff = feed_forward_network(5, 3)
+# ff.show()
 
-# nn = NN([n1, n3], [n2], create_connection=False)
-# print(nn.nodes)
-# nn.show()
+
+nn = NN([n1, n3], [n2], create_connection=True)
+print(nn.nodes)
+
+# print(n1._parameters)
+# print(n2._parameters)
+# print(n3._parameters)
+# print(n1._interface)
+# print(n2._interface)
+# print(n3._interface)
+# print(n1.parents)
+# print(n2.parents)
+# print(n3.parents)
+
+x1 = np.array([[1]])
+x2 = np.array([[1]])
+print(x1.shape,)
+n1.create_variable('x1', shape=(1,1))
+n3.create_variable('x2', shape=(1,1))
+y = nn.forward(x1=x1, x2=x2)
+print(y)

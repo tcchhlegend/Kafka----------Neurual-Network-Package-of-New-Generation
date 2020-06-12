@@ -26,18 +26,32 @@ class NN(DAGraph, ShowGraph):
         调用此函数说明前向传播由此发起
         因此传入参数必须是完整的
         """
-        for x in args:
-            result = self(x)
-        if result is None:
-            raise ValueError('The input tensors were not complete.')
-        if not self._parents:
-            return result
-        for i, p in enumerate(self._parents):
-            if i == 0:
-                output = p.forward(result)
+        def keep_rock_n_rolling(neuron, *, input, name=None):
+            if name:
+                output = neuron(**{name:input})
             else:
-                output += p.forward(result)
-        return result
+                output = neuron(input)
+            if output is not None:
+                for p in neuron.parents.values():
+                    keep_rock_n_rolling(p, input=output, name=neuron.name)
+
+        for x in args:
+            for inp_layer in self.leaves:
+                if inp_layer.match_inp_shape(x.shape):
+                    keep_rock_n_rolling(inp_layer, input=x)
+
+        for key, val in kwargs.items():
+            for inp_layer in self.leaves:
+                if key in inp_layer._interface.keys():
+                    if inp_layer._interface[key] is None:
+                        keep_rock_n_rolling(inp_layer, input=val)
+                        break
+
+        outputs = [root.output for root in self.roots]
+        if len(outputs) == 1:
+            outputs = outputs[0]
+
+        return outputs
 
     def backward(self):
         """ 反向传播
@@ -72,6 +86,6 @@ class NN(DAGraph, ShowGraph):
 
     def create_connections(self):
         def conn(node):
-            for c in node.children:
+            for c in node.children.values():
                 node.create_connection(c)
         self.for_flow(conn)
