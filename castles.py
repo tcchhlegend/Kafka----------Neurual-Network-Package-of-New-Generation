@@ -50,14 +50,17 @@ class Linear(Neuron):
             return None
         output = self.bias
         for key in self._interface.keys():
-            if key != 'bias':
-                output += self._parameters[key] @ self._interface[key]
+            output += self._parameters[key] @ self._interface[key]
         return output
 
     def local_grad(self):
         for key in self._local_grad.keys():
             self._local_grad[key] = self._parameters[key]
-        self._local_grad_params['bias'] = np.ones(self.output_shape)
+        self._local_grad_params['bias'] = np.eye(self.output_shape[0])
+
+        for key in self._interface.keys():
+            if (self._interface[key] is not None) and (self._local_grad_params[key] is None):
+                self._local_grad_params[key] = self._interface[key].T
 
     def create_variable(self, var_name, shape):
         super(Linear, self).create_variable(var_name, shape)

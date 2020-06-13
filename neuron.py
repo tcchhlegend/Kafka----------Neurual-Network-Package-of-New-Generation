@@ -39,7 +39,7 @@ class Neuron(DAGNode):
     __slots__ = 'name', 'variable_names', 'param_names'
     num_neurons = 0
 
-    def __init__(self, output_shape, name=None):
+    def __init__(self, output_shape, name=None, requires_grad=True):
         self.naming(name)
         self.output_shape = to_tuple(output_shape)
         self.variable_names = []
@@ -53,6 +53,7 @@ class Neuron(DAGNode):
         self._parameters = create_none_dict(self.param_names)
         self._local_grad_params = create_none_dict(self.param_names)
         self._grad_params = create_none_dict(self.param_names)
+        self.requires_grad_ = requires_grad
 
     def naming(self, name):
         Neuron.num_neurons += 1
@@ -166,6 +167,8 @@ class Neuron(DAGNode):
         # forward 输出
         if mode == 'forward':
             forward_output = self.F()
+            if self.requires_grad_:     # 若我们要求神经元的梯度，在算完函数值以后计算梯度
+                self.local_grad()
         if mode == 'forward' and self.parents == {}:
             self.output = forward_output
         if mode == 'forward' and interface_full:

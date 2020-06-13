@@ -25,6 +25,13 @@ class NN(DAGraph, ShowGraph):
         """ 前向传播
         调用此函数说明前向传播由此发起
         因此传入参数必须是完整的
+        INPUT
+        *args : 按shape匹配到 interface 的相应位置，并传入
+        *kwargs : 传入key对应的interface位置
+
+        OUTPUT
+        outputs : 列表，所有根节点上接收到的输出
+                若只有一个输出，则返回的是输出数组
         """
         def keep_rock_n_rolling(neuron, *, input, name=None):
             if name:
@@ -56,18 +63,29 @@ class NN(DAGraph, ShowGraph):
     def backward(self):
         """ 反向传播
         调用跳阶梯度，然后与局部梯度相乘
-        :param :
-        :return:
-        """
-        for inp_tensor in self._grad.keys():
-            self._grad[inp_tensor] = np.zeros(self.inp_shape[inp_tensor])
-            for parent, grad in self._grad:
-                self._grad[inp_tensor] += grad @ self._local_grad[parent]
 
-        for param in self._grad_params.keys():
-            self._grad_params[param] = np.zeros(self.inp_shape[param])
-            for parent, leap_grad in self._leap_grad:
-                self._grad_params[param] += self._local_grad_params[param] @ leap_grad
+        """
+
+        def accumulate(neuron):
+            if neuron.parents == {}:
+                for key, val in neuron._local_grad.items():
+                    neuron._grad[key] = val
+                for key, val in neuron._local_grad_params.items():
+                    neuron._grad_params[key] = val
+            else:
+                for i, (name, p) in enumerate(neuron.parents.items()):
+                    if i == 0:
+                        for key, val in neuron._local_grad.items():
+                            neuron._grad[key] = p._grad[neuron.name] @ val
+                        for key, val in neuron._local_grad_params.items():
+                            neuron._grad_params[key] = p._grad[neuron.name] @ val
+                    else:
+                        for key, val in neuron._local_grad.items():
+                            neuron._grad[key] += p._grad[neuron.name] @ val
+                        for key, val in neuron._local_grad_params.items():
+                            neuron._grad_params[key] += p._grad[neuron.name] @ val
+
+        self.back_flow(accumulate)
 
     def optimize(self, lr, algorithm='SGD'):
         for key, val in self._grad_params.items():
