@@ -2,7 +2,7 @@ import numpy as np
 from functools import partial
 from dag import DAGNode
 import uuid
-from utils import create_none_dict, to_tuple
+from utils import create_none_dict, to_tuple, clear_dict
 
 
 class Neuron(DAGNode):
@@ -93,7 +93,7 @@ class Neuron(DAGNode):
         self._interface[var_name] = None
         self._local_grad[var_name] = None
         self._grad[var_name] = None
-        self._inp_shape[var_name] = tuple(shape)
+        self._inp_shape[var_name] = tuple(shape) if shape else None
 
     def create_parameter(self, par_name, shape):
         self.param_names.append(par_name)
@@ -104,7 +104,58 @@ class Neuron(DAGNode):
     def create_connection(self, child):
         raise NotImplementedError
 
+    def mode_connect(self, *, neuron):
+        self.children[neuron.name] = neuron
+        neuron.parents[self.name] = self
+        self.create_variable(neuron.name, shape=neuron.output_shape)
+        return neuron
+
+    def mode_forward(self, *, val, name, interface_full):
+        if interface_full:
+            return ValueError('Interface is full.')
+
+        if name not in self._interface.keys():
+            raise ValueError('The input shape of left function does not match output shape of right function.')
+        self._interface[name] = val
+
+    def optimize(self, lr, algorithm='SGD'):
+        for key, val in self._grad_params.items():
+            print('key name:', key)
+            print('param shape:',self._parameters[key].shape)
+            print('grad shape: ',val.shape )
+            if algorithm == 'SGD':
+                self._parameters[key] -= lr * val
+            if algorithm == 'AdaGrad':
+                ...
+            if algorithm == 'Momentum':
+                ...
+            if algorithm == 'Adam':
+                ...
+
+    def clear(self):
+        clear_dict(self._interface)
+        clear_dict(self._local_grad)
+        clear_dict(self._local_grad_params)
+        clear_dict(self._grad)
+        clear_dict(self._grad_params)
+
+    # --------------三大垃圾回收------------------------
+    def clear_interface(self):
+        """用在执行完输入后"""
+        clear_dict(self._interface)
+
+    def clear_local_grad(self):
+        """用在算完gradient后"""
+        clear_dict(self._local_grad)
+        clear_dict(self._local_grad_params)
+
+    def clear_grad(self):
+        """用在optimize后"""
+        clear_dict(self._grad)
+        clear_dict(self._grad_params)
+
     def __call__(self, *args, **kwargs):
+        '''调用函数'''
         mode = None
         connect_output = []
         interface_full = self.check_interface()
@@ -121,20 +172,11 @@ class Neuron(DAGNode):
                     raise ValueError('discover unknown input type: %s' % type(arg))
 
             if mode == 'connect':
-                neuron = arg
-                self.children[neuron.name] = neuron
-                neuron.parents[self.name] = self
-                self.create_variable(neuron.name, shape=neuron.output_shape)
-                connect_output.append(neuron)
+                neuron = self.mode_connect(neuron=arg)
+                connect_output = neuron
+
             elif mode == 'forward':  # 否则默认输入是数组，调用forward方法
-                if interface_full:
-                    return ValueError('Interface is full.')
-                x = arg
-                name = self.match_inp_shape(x.shape)
-                self._interface[name] = x
-                if not name:
-                    raise ValueError('The input shape of left function does not match output shape of right function.')
-                interface_full = self.check_interface()
+                raise ValueError('Position arguments are not allowed in `forward` mode.')
 
         # -------------------------------Handle kwargs------------------------------
         for i, (key, val) in enumerate(kwargs.items()):
@@ -148,19 +190,10 @@ class Neuron(DAGNode):
                     raise ValueError('discover unknown input type: %s' % type(arg))
 
             if mode == 'connect':
-                neuron = val
-                self.children[neuron.name] = neuron
-                neuron.parents[self.name] = self
-                self.create_variable(neuron.name, shape=neuron.output_shape)
-                connect_output.append(neuron)
+                raise ValueError('Keyword arguments are not allowed in `connection mode`.')
+
             elif mode == 'forward':  # 否则默认输入是数组，调用forward方法
-                if interface_full:
-                    return ValueError('Interface is full.')
-                x = val
-                name = key
-                if name not in self._interface.keys():
-                    raise ValueError('The input shape of left function does not match output shape of right function.')
-                self._interface[name] = x
+                self.mode_forward(val=val, name=key, interface_full=interface_full)
 
                 interface_full = self.check_interface()
 
@@ -169,10 +202,10 @@ class Neuron(DAGNode):
             forward_output = self.F()
             if self.requires_grad_:     # 若我们要求神经元的梯度，在算完函数值以后计算梯度
                 self.local_grad()
-        if mode == 'forward' and self.parents == {}:
-            self.output = forward_output
-        if mode == 'forward' and interface_full:
-            return forward_output
+            if self.parents == {}:
+                self.output = forward_output
+            if interface_full:
+                return forward_output
 
         # connect 输出
         if mode == 'connect':
