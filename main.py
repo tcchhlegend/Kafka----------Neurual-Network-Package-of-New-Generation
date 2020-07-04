@@ -1,6 +1,6 @@
-from neuron import Neuron
-from castles import Linear, MSELoss, Input
-from nn import NN
+from core.neuron.neuron import Neuron
+from castles.castles import Linear, MSELoss, Input
+from core.nn.nn import NN
 import numpy as np
 
 n1 = Linear(output_shape=1)
@@ -47,10 +47,10 @@ nn.show()
 
 def print_state(n):
     print('-----------state for %s------------' % n.name)
-    print('interface:\n', n._interface)
-    print('parameters:\n', n._parameters)
-    print('grad:\n', n._grad)
-    print('grad params:\n', n._grad_params)
+    print('interface:\n', n.interface)
+    print('parameters:\n', n.parameters)
+    print('grad:\n', n.grad_)
+    print('grad params:\n', n.grad_params_)
     print()
 
 
